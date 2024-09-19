@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
 from django.conf import settings
+from datetime import timedelta
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, username, password=None):
@@ -46,30 +47,49 @@ class Task(models.Model):
         ('High', 'High'),
     ]
     
+    STATUS_CHOICES = [
+        ('Pending', 'Pending'),
+        ('In Progress', 'In Progress'),
+        ('Completed', 'Completed'),
+    ]
+    
+    RECURRENCE_CHOICES = [
+        ('None', 'None'),
+        ('Daily', 'Daily'),
+        ('Weekly', 'Weekly'),
+        ('Monthly', 'Monthly'),
+    ]
+    
+    CATEGORY_CHOICES = [
+        ('Work', 'Work'),
+        ('Personal', 'Personal'),
+        ('Shopping', 'Shopping'),
+    ]
+
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     title = models.CharField(max_length=200)
     description = models.TextField()
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='Medium')
+    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES, default='Personal')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Pending')
     deadline = models.DateTimeField()
+    recurrence = models.CharField(max_length=10, choices=RECURRENCE_CHOICES, default='None')
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def save(self, *args, **kwargs):
+        if self.recurrence == 'Daily':
+            self.deadline += timedelta(days=1)
+        elif self.recurrence == 'Weekly':
+            self.deadline += timedelta(weeks=1)
+        elif self.recurrence == 'Monthly':
+            self.deadline += timedelta(weeks=4)
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.title
+
     
 
 
-class Profile(models.Model):
-    GENDER = [
-        ('Male', 'M'),
-        ('Female', 'F'),
-    ]
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    first_name = models.CharField(max_length=100, blank=True, null=True)
-    last_name = models.CharField(max_length=100, blank=True, null=True)
-    date_of_birth = models.DateField(blank=True, null=True)
-    gender = models.CharField(max_length=10, choices=GENDER)
-    address = models.TextField(blank=True, null=True)
-    phone_number = models.CharField(max_length=15, blank=True, null=True)
-    

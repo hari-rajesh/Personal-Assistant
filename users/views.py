@@ -1,11 +1,12 @@
 from rest_framework import generics, status
-from rest_framework.decorators import api_view
-from .models import CustomUser, Task, Profile
+from rest_framework.decorators import api_view, permission_classes
+from .models import CustomUser, Task
 from rest_framework.response import Response
-from .serializers import CustomUserSerializer, TaskSerializer, ProfileSerializer
+from .serializers import CustomUserSerializer, TaskSerializer
 from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import IsAuthenticated
+from django.core.mail import send_mail
 
 class CreateUserView(generics.CreateAPIView):
     queryset = CustomUser.objects.all()
@@ -33,7 +34,7 @@ def login_view(request):
 class TaskCreateView(generics.CreateAPIView):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
-    permission_classes = [IsAuthenticated] 
+    permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -69,11 +70,16 @@ class TaskDeleteView(generics.DestroyAPIView):
         return Task.objects.filter(user=self.request.user)
 
 
-class ProfileUpdateView(generics.RetrieveUpdateAPIView):
-    queryset = Profile.objects.all()
-    serializer_class = ProfileSerializer
-    permission_classes = [IsAuthenticated]
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def tasks_by_category(request):
+    user = request.user
+    category = request.query_params.get('category', None)
+    if category:
+        tasks = Task.objects.filter(user=user, category=category)
+    else:
+        tasks = Task.objects.filter(user=user)
 
-    def get_object(self):
-        # Ensure that the profile belongs to the currently authenticated user
-        return Profile.objects.get(user=self.request.user)
+    serializer = TaskSerializer(tasks, many=True)
+    return Response(serializer.data)
+

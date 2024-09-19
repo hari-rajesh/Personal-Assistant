@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import CreateUserView, TaskCreateView, TaskDeleteView, TaskDetailView, TaskListView, TaskUpdateView, login_view
+from .views import CreateUserView, TaskCreateView, TaskDeleteView, TaskDetailView, TaskListView, TaskUpdateView, login_view, tasks_by_category
 
 urlpatterns = [
     path('create-user/', CreateUserView.as_view(), name='create_user'),
@@ -9,4 +9,6 @@ urlpatterns = [
     path('tasks/<int:pk>/', TaskDetailView.as_view(), name='task_detail'),  # GET request to retrieve a task
     path('tasks/<int:pk>/edit/', TaskUpdateView.as_view(), name='edit_task'),  # PUT/PATCH request to update a task
     path('tasks/<int:pk>/delete/', TaskDeleteView.as_view(), name='delete_task'),  # DELETE request to remove a task
+    path('tasks/category/', tasks_by_category, name='tasks-by-category'),
+
 ]
