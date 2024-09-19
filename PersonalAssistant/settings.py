@@ -112,6 +112,30 @@ DATABASES = {
 # }
 
 
+#EMAIL SEND
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'harirajesh134email@gmail.com'
+EMAIL_HOST_PASSWORD = 'nyhclmxeeeylvzmz'
+
+
+OAUTH2_CLIENT_ID = '712661629464-jtv137617bpu3gog2epfj7gug52898q2.apps.googleusercontent.com'
+OAUTH2_CLIENT_SECRET = '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'
+OAUTH2_REDIRECT_URI = 'http://localhost:8000/oauth2callback/'
+
+
+# CELERY_BROKER_URL = 'redis://localhost:6379/0'
+# CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+# CELERY_ACCEPT_CONTENT = ['json']
+# CELERY_TASK_SERIALIZER = 'json'
+# CELERY_RESULT_SERIALIZER = 'json'
+# CELERY_TIMEZONE = 'UTC'
+
+
+
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 

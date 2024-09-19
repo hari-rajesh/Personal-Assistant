@@ -1,8 +1,8 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
 from django.conf import settings
-from datetime import timedelta
-
+from datetime import timedelta, datetime
+from django.utils import timezone 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, username, password=None):
         if not email:
@@ -90,6 +90,5 @@ class Task(models.Model):
     def __str__(self):
         return self.title
 
-    
-
-
+    def is_overdue(self):
+        return self.deadline and self.deadline < timezone.now()

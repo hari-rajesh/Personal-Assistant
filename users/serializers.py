@@ -17,7 +17,16 @@ class CustomUserSerializer(serializers.ModelSerializer):
         )
         return user
 
+class UserUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomUser
+        fields = ['username', 'email']  # Include fields you want to allow for updates
 
+    def update(self, instance, validated_data):
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
 
 class TaskSerializer(serializers.ModelSerializer):
     class Meta:

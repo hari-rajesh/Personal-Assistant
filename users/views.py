@@ -2,15 +2,29 @@ from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from .models import CustomUser, Task
 from rest_framework.response import Response
-from .serializers import CustomUserSerializer, TaskSerializer
+from .serializers import CustomUserSerializer, TaskSerializer, UserUpdateSerializer
 from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import IsAuthenticated
 from django.core.mail import send_mail
+from django.conf import settings
+from .oauth import send_email_via_gmail
+from django.http import HttpResponse
 
 class CreateUserView(generics.CreateAPIView):
     queryset = CustomUser.objects.all()
     serializer_class = CustomUserSerializer
+
+
+class EditUserView(generics.UpdateAPIView):
+    queryset = CustomUser.objects.all()
+    serializer_class = UserUpdateSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
+
+from django.utils import timezone
 
 
 @api_view(['POST'])
@@ -26,9 +40,29 @@ def login_view(request):
     if not user:
         return Response({'error': 'Invalid credentials.'}, status=status.HTTP_401_UNAUTHORIZED)
 
-    token, created = Token.objects.get_or_create(user=user)
+    # Fetch all overdue tasks for the user
+    overdue_tasks = Task.objects.filter(user=user, deadline__lt=timezone.now(), status='Pending')
 
+    if overdue_tasks.exists():
+        subject = 'Overdue Tasks Notification'
+        message = 'You have the following overdue tasks:\n\n'
+
+        for task in overdue_tasks:
+            message += f'- {task.title} (Due: {task.deadline})\n'
+
+        message += '\nPlease take action to complete them.\n\nBest,\nTask Manager'
+        recipient_list = user.email
+
+        # Send email via Gmail API using OAuth
+        success = send_email_via_gmail(subject, message, recipient_list)
+        if success:
+            print('Email sent successfully')
+        else:
+            print('Failed to send email')
+    
+    token, created = Token.objects.get_or_create(user=user)
     return Response({'token': token.key}, status=status.HTTP_200_OK)
+
 
 
 class TaskCreateView(generics.CreateAPIView):
@@ -53,13 +87,26 @@ class TaskDetailView(generics.RetrieveAPIView):
     def get_queryset(self):
         return Task.objects.filter(user=self.request.user) 
 
+
 class TaskUpdateView(generics.UpdateAPIView):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
-    permission_classes = [IsAuthenticated] 
+    permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        return Task.objects.filter(user=self.request.user)
+    def perform_update(self, serializer):
+        task = serializer.save()
+        if task.is_overdue():
+            subject = f'Overdue Task: "{task.title}"'
+            message = f'Hi {task.user.username},\n\nYour task "{task.title}" is overdue since {task.deadline}.\n\nBest,\nTask Manager'
+            recipient_list = task.user.email
+
+            # Send email via Gmail API using OAuth
+            success = send_email_via_gmail(subject, message, recipient_list)
+            if success:
+                print('Email sent successfully')
+            else:
+                print('Failed to send email')
+
 
 class TaskDeleteView(generics.DestroyAPIView):
     queryset = Task.objects.all()
@@ -82,4 +129,5 @@ def tasks_by_category(request):
 
     serializer = TaskSerializer(tasks, many=True)
     return Response(serializer.data)
+
 
