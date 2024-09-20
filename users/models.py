@@ -1,43 +1,17 @@
 from django.db import models
-from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
+from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.conf import settings
 from datetime import timedelta, datetime
 from django.utils import timezone 
-class CustomUserManager(BaseUserManager):
-    def create_user(self, email, username, password=None):
-        if not email:
-            raise ValueError("Users must have an email address")
-        if not username:
-            raise ValueError("Users must have a username")
-        
-        email = self.normalize_email(email)
-        user = self.model(email=email, username=username)
-        user.set_password(password)
-        user.save(using=self._db)
-        return user
-
-    def create_superuser(self, email, username, password=None):
-        user = self.create_user(email=email, username=username, password=password)
-        user.is_admin = True
-        user.save(using=self._db)
-        return user
 
 
-class CustomUser(AbstractBaseUser):
-    username = models.CharField(max_length=150, unique=True)
-    email = models.EmailField(unique=True)
-    password = models.CharField(max_length=128)
-    phonenumber = models.CharField(max_length=25)
-    is_active = models.BooleanField(default=True)
-    is_admin = models.BooleanField(default=False)
-
-    objects = CustomUserManager()
-
-    USERNAME_FIELD = 'username'
-    REQUIRED_FIELDS = ['email']
+class User(AbstractUser):
+    mobile_number = models.CharField(max_length=50)
 
     def __str__(self):
         return self.username
+    
+
 
 
 class Task(models.Model):
@@ -46,20 +20,20 @@ class Task(models.Model):
         ('Medium', 'Medium'),
         ('High', 'High'),
     ]
-    
+
     STATUS_CHOICES = [
         ('Pending', 'Pending'),
         ('In Progress', 'In Progress'),
         ('Completed', 'Completed'),
     ]
-    
+
     RECURRENCE_CHOICES = [
         ('None', 'None'),
         ('Daily', 'Daily'),
         ('Weekly', 'Weekly'),
         ('Monthly', 'Monthly'),
     ]
-    
+
     CATEGORY_CHOICES = [
         ('Work', 'Work'),
         ('Personal', 'Personal'),
