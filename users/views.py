@@ -10,6 +10,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 from .oauth import send_email_via_gmail
 from django.http import HttpResponse
+from .utils import send_sms_via_twilio
 
 class CreateUserView(generics.CreateAPIView):
     queryset = CustomUser.objects.all()
@@ -59,7 +60,17 @@ def login_view(request):
             print('Email sent successfully')
         else:
             print('Failed to send email')
-    
+
+        recipient_phone = user.phonenumber
+
+        sms_body = message
+        sms_success = send_sms_via_twilio(sms_body, recipient_phone)
+        if sms_success:
+            print('SMS sent successfully')
+        else:
+            print('Failed to send SMS')
+
+
     token, created = Token.objects.get_or_create(user=user)
     return Response({'token': token.key}, status=status.HTTP_200_OK)
 
@@ -101,11 +112,11 @@ class TaskUpdateView(generics.UpdateAPIView):
             recipient_list = task.user.email
 
             # Send email via Gmail API using OAuth
-            success = send_email_via_gmail(subject, message, recipient_list)
-            if success:
-                print('Email sent successfully')
-            else:
-                print('Failed to send email')
+            # success = send_email_via_gmail(subject, message, recipient_list)
+            # if success:
+            #     print('Email sent successfully')
+            # else:
+            #     print('Failed to send email')
 
 
 class TaskDeleteView(generics.DestroyAPIView):

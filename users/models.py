@@ -27,7 +27,7 @@ class CustomUser(AbstractBaseUser):
     username = models.CharField(max_length=150, unique=True)
     email = models.EmailField(unique=True)
     password = models.CharField(max_length=128)
-
+    phonenumber = models.CharField(max_length=25)
     is_active = models.BooleanField(default=True)
     is_admin = models.BooleanField(default=False)
 

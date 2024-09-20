@@ -20,7 +20,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
 class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = ['username', 'email']  # Include fields you want to allow for updates
+        fields = ['username', 'email', 'phonenumber']  # Include fields you want to allow for updates
 
     def update(self, instance, validated_data):
         for attr, value in validated_data.items():
