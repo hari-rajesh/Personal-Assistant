@@ -3,7 +3,8 @@ from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.conf import settings
 from datetime import timedelta, datetime
 from django.utils import timezone 
-
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 class User(AbstractUser):
     mobile_number = models.CharField(max_length=50)
@@ -39,7 +40,6 @@ class Task(models.Model):
         ('Personal', 'Personal'),
         ('Shopping', 'Shopping'),
     ]
-
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     title = models.CharField(max_length=200)
     description = models.TextField()
@@ -66,3 +66,36 @@ class Task(models.Model):
 
     def is_overdue(self):
         return self.deadline and self.deadline < timezone.now()
+    
+
+
+class Profile(models.Model):
+    USER_TYPE_CHOICES = [
+        ('admin', 'Admin'),
+        ('premium', 'Premium_User'),
+        ('guest', 'Guest_User'),
+    ]
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    bio = models.TextField(max_length=500, blank=True)
+    location = models.CharField(max_length=100, blank=True)
+    profile_picture = models.ImageField(upload_to='profile_pics/', blank=True, null=True)
+    # preferences = models.JSONField(default=dict, blank=True)  # For storing user preferences
+    enable_email = models.BooleanField(default=True)  # Email notification setting
+    enable_sms = models.BooleanField(default=False)  # SMS notification setting
+    user_type = models.CharField(max_length=10, choices=USER_TYPE_CHOICES, default='guest')  # Admin, Premium, guest
+    
+    def __str__(self):
+        return self.user.username
+    
+
+
+
+@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+def create_user_profile(sender, instance, created, **kwargs):
+    if created:
+        Profile.objects.create(user=instance)
+
+@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+def save_user_profile(sender, instance, **kwargs):
+    instance.profile.save()

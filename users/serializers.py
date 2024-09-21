@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, Task
+from .models import User, Task, Profile
 from django.contrib.auth import authenticate
 
 class TaskSerializer(serializers.ModelSerializer):
@@ -51,8 +51,10 @@ class UserSerializer(serializers.ModelSerializer):
             first_name=validated_data['first_name'],
             last_name=validated_data['last_name'],
             email=validated_data['email'],
+            password=validated_data['password']
         )
-        user.set_password(validated_data['password'])
+        password=validated_data['password']
+        user.set_password(password)
         user.save()
         return user
 
@@ -101,3 +103,10 @@ class LoginSerializer(serializers.Serializer):
         else:
             raise serializers.ValidationError({"message": "Username and password must be present"})
         return attrs
+
+
+class ProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Profile
+        fields = ['user', 'bio', 'location', 'profile_picture', 'enable_email', 'enable_sms']
+        read_only_fields = ['user']  # Set user as read-only so it can't be modified directly
