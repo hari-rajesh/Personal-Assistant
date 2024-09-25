@@ -29,6 +29,14 @@ DEBUG = True
 ALLOWED_HOSTS = []
 
 AUTH_USER_MODEL = 'users.User'
+import os
+# Constants
+GOOGLE_OAUTH2_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
+CLIENT_ID = '712661629464-jele9q8i3vogmi05tljpaa0q56kjkv13.apps.googleusercontent.com'
+CLIENT_SECRET = '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'
+REDIRECT_URI = 'http://localhost:8000/oauth2callback/'
+SCOPE = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/userinfo.email'
+GOOGLE_OAUTH_CLIENT_SECRETS_FILE = os.path.join(BASE_DIR, 'users/credentials.json')
 
 # Application definition
 

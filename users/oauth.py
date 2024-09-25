@@ -33,27 +33,30 @@ def send_email_via_gmail(subject, body, to):
     except HttpError as error:
         print(f'An error occurred: {error}')
         return False
+    
+def authenticate_and_save_token():
+    # Update the scopes to include both Gmail and Calendar scopes
+    scopes = [
+        'https://www.googleapis.com/auth/gmail.send',  # Gmail send scope
+        'https://www.googleapis.com/auth/calendar'  # Calendar read/write scope
+    ]
+    credentials_file = 'credentials.json'
+    token_file = 'token.json'
 
+    if not os.path.exists(credentials_file):
+        print(f"Credentials file '{credentials_file}' not found.")
+        return
 
+    flow = InstalledAppFlow.from_client_secrets_file(credentials_file, scopes=scopes)
 
-# def authenticate_and_save_token():
-#     scopes = ['https://www.googleapis.com/auth/gmail.send']
-#     credentials_file = 'credentials.json'
-#     token_file = 'token.json'
+    try:
+        # Include access_type='offline' and prompt='consent'
+        creds = flow.run_local_server(port=8080, access_type='offline', prompt='consent')
+        with open(token_file, 'w') as token:
+            token.write(creds.to_json())
+        print(f'Token saved to {token_file}')
+    except Exception as e:
+        print(f"Error during OAuth flow: {e}")
 
-#     if not os.path.exists(credentials_file):
-#         print(f"Credentials file '{credentials_file}' not found.")
-#         return
-
-#     flow = InstalledAppFlow.from_client_secrets_file(credentials_file, scopes=scopes)
-
-#     try:
-#         creds = flow.run_local_server(port=8080, access_type='offline')
-#         with open(token_file, 'w') as token:
-#             token.write(creds.to_json())
-#         print(f'Token saved to {token_file}')
-#     except Exception as e:
-#         print(f"Error during OAuth flow: {e}")
-
-# if __name__ == '__main__':
-#     authenticate_and_save_token()
+if __name__ == '__main__':
+    authenticate_and_save_token()

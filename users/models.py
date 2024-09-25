@@ -80,16 +80,24 @@ class Profile(models.Model):
     bio = models.TextField(max_length=500, blank=True)
     location = models.CharField(max_length=100, blank=True)
     profile_picture = models.ImageField(upload_to='profile_pics/', blank=True, null=True)
-    # preferences = models.JSONField(default=dict, blank=True)  # For storing user preferences
-    enable_email = models.BooleanField(default=True)  # Email notification setting
-    enable_sms = models.BooleanField(default=False)  # SMS notification setting
-    user_type = models.CharField(max_length=10, choices=USER_TYPE_CHOICES, default='guest')  # Admin, Premium, guest
-    
+    enable_email = models.BooleanField(default=True)
+    enable_sms = models.BooleanField(default=False)
+    user_type = models.CharField(max_length=10, choices=USER_TYPE_CHOICES, default='guest')
+
+    # Google OAuth tokens
+    google_access_token = models.TextField(blank=True, null=True)
+    google_refresh_token = models.TextField(blank=True, null=True)
+    google_token_expiry = models.DateTimeField(blank=True, null=True)
+
+    def has_valid_google_access_token(self):
+        """
+        Checks if the stored Google access token is still valid.
+        """
+        return self.google_token_expiry and self.google_token_expiry > timezone.now()
+
     def __str__(self):
         return self.user.username
     
-
-
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
 def create_user_profile(sender, instance, created, **kwargs):

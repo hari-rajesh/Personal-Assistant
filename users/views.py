@@ -1,6 +1,6 @@
 from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view, permission_classes
-from .models import  Task
+from .models import  Task, Profile
 from .serializers import TaskSerializer, ProfileSerializer, UserSerializer, LoginSerializer, UpdateSerializer
 from rest_framework.authtoken.models import Token
 from django.core.mail import send_mail
@@ -8,7 +8,7 @@ from django.conf import settings
 from .oauth import send_email_via_gmail
 from django.http import HttpResponse
 from .utils import send_sms_via_twilio
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated,AllowAny
@@ -17,7 +17,17 @@ from drf_yasg import openapi
 from django.utils import timezone
 from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
-
+from datetime import datetime, timedelta
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from django.http import JsonResponse
+import requests
+from google.auth.transport.requests import Request
+from google.auth.exceptions import RefreshError
+from rest_framework.views import APIView
+from google_auth_oauthlib.flow import Flow
+import logging
 
 
 @swagger_auto_schema(
@@ -56,10 +66,9 @@ class UserDeleteView(generics.DestroyAPIView):
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, *args, **kwargs):
-        user_id = kwargs.get('pk')  # Assuming you're using 'pk' to identify the user
+        user_id = kwargs.get('pk') 
         user_to_delete = self.get_object()
 
-        # Check if the requesting user is either the user themselves or an admin
         if request.user.profile.user_type == 'admin' or request.user.id == user_to_delete.id:
             user_to_delete.delete()
             return Response({"detail": "User Deleted Successfully"}, status=status.HTTP_204_NO_CONTENT)
@@ -85,7 +94,6 @@ def login_view(request):
         if not user:
             return Response({'error': 'Invalid credentials.'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # Fetch all overdue tasks for the user
         overdue_tasks = Task.objects.filter(user=user, deadline__lt=timezone.now(), status='Pending')
 
         if overdue_tasks.exists():
@@ -180,6 +188,7 @@ class TaskListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
     def get_queryset(self):
         return Task.objects.filter(user=self.request.user) 
+    
 
 class TaskDetailView(generics.RetrieveAPIView):
     queryset = Task.objects.all()
@@ -244,8 +253,6 @@ def tasks_by_category(request):
     return Response(serializer.data)
 
 
-from .models import Profile
-from .serializers import ProfileSerializer
 
 class ProfileDetailUpdateView(generics.RetrieveUpdateAPIView):
     serializer_class = ProfileSerializer
@@ -254,3 +261,100 @@ class ProfileDetailUpdateView(generics.RetrieveUpdateAPIView):
     # Get the profile of the logged-in user
     def get_object(self):
         return Profile.objects.get(user=self.request.user)
+    
+class GoogleLoginView(APIView):
+    """
+    Redirects to Google's OAuth 2.0 consent screen for login.
+    """
+    def get(self, request, *args, **kwargs):
+        flow = Flow.from_client_secrets_file(
+            settings.GOOGLE_OAUTH_CLIENT_SECRETS_FILE,
+            scopes=['https://www.googleapis.com/auth/calendar'],
+            redirect_uri=settings.REDIRECT_URI
+        )
+
+        authorization_url, _ = flow.authorization_url(
+            access_type='offline',
+            prompt='consent'  # Ensure refresh token is granted
+        )
+        
+        return redirect(authorization_url)
+
+
+class GoogleCallbackView(APIView):
+    def get(self, request, *args, **kwargs):
+        flow = Flow.from_client_secrets_file(
+            settings.GOOGLE_OAUTH_CLIENT_SECRETS_FILE,
+            scopes=['https://www.googleapis.com/auth/calendar'],
+            redirect_uri=settings.REDIRECT_URI
+        )
+
+        flow.fetch_token(authorization_response=request.build_absolute_uri())
+        credentials = flow.credentials
+
+        if not request.user.is_authenticated:
+            return JsonResponse({'error': 'User not authenticated'}, status=401)
+
+        profile = request.user.profile
+        profile.google_access_token = credentials.token
+        profile.google_refresh_token = credentials.refresh_token
+        profile.google_token_expiry = timezone.now() + timedelta(seconds=credentials.expiry)
+        profile.save()
+
+        return JsonResponse({'message': 'Google OAuth login successful'})
+
+
+
+
+class TaskSyncGoogleCalendarView(APIView):
+
+    def post(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return JsonResponse({'error': 'User is not authenticated'}, status=401)
+
+        profile = request.user.profile
+        access_token = profile.google_access_token
+        refresh_token = profile.google_refresh_token
+
+        if not access_token or not refresh_token:
+            return JsonResponse({'error': 'User is not authenticated with Google'}, status=400)
+
+        # Build credentials from the user's profile tokens
+        credentials = Credentials(
+            token=access_token,
+            refresh_token=refresh_token,
+            token_uri='https://oauth2.googleapis.com/token',
+            client_id=settings.CLIENT_ID,
+            client_secret=settings.CLIENT_SECRET
+        )
+
+        # Build the Google Calendar API service
+        service = build('calendar', 'v3', credentials=credentials)
+
+        # Example task data (you may want to get this from the request)
+        task_data = request.data  # Assuming task data is passed in the request
+        event = {
+            'summary': task_data.get('title', 'Sample Task from Django App'),
+            'description': task_data.get('description', 'This is a task synced from the Django app.'),
+            'start': {
+                'dateTime': task_data.get('start', '2024-09-30T09:00:00-07:00'),
+                'timeZone': 'America/Los_Angeles',
+            },
+            'end': {
+                'dateTime': task_data.get('end', '2024-09-30T10:00:00-07:00'),
+                'timeZone': 'America/Los_Angeles',
+            },
+            'reminders': {
+                'useDefault': False,
+                'overrides': [
+                    {'method': 'email', 'minutes': 24 * 60},
+                    {'method': 'popup', 'minutes': 10},
+                ],
+            },
+        }
+
+        try:
+            event = service.events().insert(calendarId='primary', body=event).execute()
+            return JsonResponse({'message': 'Task synced to Google Calendar', 'event': event}, status=201)
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)

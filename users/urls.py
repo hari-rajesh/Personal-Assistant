@@ -1,6 +1,12 @@
 from django.urls import path
-from .views import TaskCreateView, TaskDeleteView, TaskDetailView, TaskListView, TaskUpdateView, tasks_by_category
-from .views import  register_view, update_view, login_view, logout_view, refresh_view, ProfileDetailUpdateView, UserDeleteView
+from .views import (
+    register_view, update_view, login_view, logout_view, refresh_view, ProfileDetailUpdateView,
+    UserDeleteView, GoogleLoginView, GoogleCallbackView
+)
+from .views import (
+    TaskCreateView, TaskDeleteView, TaskDetailView, TaskListView, TaskUpdateView, tasks_by_category,
+    TaskSyncGoogleCalendarView
+)
 
 urlpatterns = [
     path('register/', register_view, name="register"),
@@ -8,13 +14,15 @@ urlpatterns = [
     path('login/', login_view, name="login"),
     path('logout/', logout_view, name="logout"),
     path('refresh/', refresh_view, name="refresh"),
-    path('delete/<int:pk>/', UserDeleteView.as_view(), name='delete-user'),  # Ensure it's 'user_id'
-    path('tasks/', TaskListView.as_view(), name='task_list'),  # GET request to list tasks
-    path('tasks/create/', TaskCreateView.as_view(), name='task_create'),  # Create a task
-    path('tasks/<int:pk>/', TaskDetailView.as_view(), name='task_detail'),  # GET request to retrieve a task
-    path('tasks/<int:pk>/edit/', TaskUpdateView.as_view(), name='edit_task'),  # PUT/PATCH request to update a task
-    path('tasks/<int:pk>/delete/', TaskDeleteView.as_view(), name='delete_task'),  # DELETE request to remove a task
-    path('tasks/category/', tasks_by_category, name='tasks-by-category'),
+    path('delete/<int:pk>/', UserDeleteView.as_view(), name='delete-user'),
     path('profile/', ProfileDetailUpdateView.as_view(), name='profile-detail-update'),
-
+    path('google/login/', GoogleLoginView.as_view(), name='google_login'),
+    path('oauth2callback/', GoogleCallbackView.as_view(), name='google_callback'),
+    path('tasks/', TaskListView.as_view(), name='task_list'),
+    path('tasks/create/', TaskCreateView.as_view(), name='task_create'),
+    path('tasks/<int:pk>/', TaskDetailView.as_view(), name='task_detail'),
+    path('tasks/<int:pk>/edit/', TaskUpdateView.as_view(), name='edit_task'),
+    path('tasks/<int:pk>/delete/', TaskDeleteView.as_view(), name='delete_task'),
+    path('tasks/category/', tasks_by_category, name='tasks-by-category'),
+    path('tasks/sync-google-calendar/', TaskSyncGoogleCalendarView.as_view(), name='sync_google_calendar'),
 ]

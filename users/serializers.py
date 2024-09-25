@@ -109,4 +109,4 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
         fields = ['user', 'bio', 'location', 'profile_picture', 'enable_email', 'enable_sms']
-        read_only_fields = ['user']  # Set user as read-only so it can't be modified directly
+        read_only_fields = ['user'] 
