@@ -10,7 +10,7 @@ from .views import (
 
 urlpatterns = [
     path('register/', register_view, name="register"),
-    path('update/', update_view, name="update"),
+    path('update/<int:pk>/', update_view, name='update-user'),
     path('login/', login_view, name="login"),
     path('logout/', logout_view, name="logout"),
     path('refresh/', refresh_view, name="refresh"),

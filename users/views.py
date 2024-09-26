@@ -11,7 +11,7 @@ from .utils import send_sms_via_twilio
 from django.shortcuts import render, redirect
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated,AllowAny
+from rest_framework.permissions import AllowAny
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.utils import timezone
@@ -29,7 +29,12 @@ from rest_framework.views import APIView
 from google_auth_oauthlib.flow import Flow
 import logging
 from django.views.decorators.csrf import csrf_exempt
+from rest_framework.permissions import BasePermission
 
+
+class IsAdminOrSelf(BasePermission):
+    def has_object_permission(self, request, view, obj):
+        return obj == request.user or request.user.profile.user_type == 'admin'
 
 @swagger_auto_schema(
     method='post',
@@ -45,15 +50,23 @@ def register_view(request):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+
 @swagger_auto_schema(
     method='put',
     request_body=UpdateSerializer,
     responses={200: 'User Updated Successfully', 400: 'Bad Request'}
 )
 @api_view(['PUT'])
-@permission_classes([IsAuthenticated])
-def update_view(request):
-    user = request.user
+@permission_classes([IsAdminOrSelf])
+def update_view(request, pk):
+    try:
+        user = User.objects.get(pk=pk)
+    except User.DoesNotExist:
+        return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not IsAdminOrSelf().has_object_permission(request, None, user):
+        return Response({"error": "You don't have permission to update this user"}, status=status.HTTP_403_FORBIDDEN)
+
     serializer = UpdateSerializer(user, data=request.data, partial=True)
     if serializer.is_valid():
         serializer.save()
@@ -61,10 +74,11 @@ def update_view(request):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+
 class UserDeleteView(generics.DestroyAPIView):
     User = get_user_model()
     queryset = User.objects.all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminOrSelf]
 
     def delete(self, request, *args, **kwargs):
         user_id = kwargs.get('pk') 
@@ -140,7 +154,7 @@ def login_view(request):
     responses={200: 'Logout Successful', 400: 'Bad Request'}
 )
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdminOrSelf])
 def logout_view(request):
     try:
         refresh = request.data.get('refresh')
@@ -162,7 +176,7 @@ def logout_view(request):
     responses={200: 'Token Refreshed Successfully', 400: 'Bad Request'}
 )
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdminOrSelf])
 def refresh_view(request):
     try:
         refresh = request.data.get('refresh')
@@ -179,31 +193,29 @@ def refresh_view(request):
 class TaskCreateView(generics.CreateAPIView):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminOrSelf]
 
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
 
 class TaskListView(generics.ListAPIView):
     serializer_class = TaskSerializer
-    permission_classes = [IsAuthenticated]
-    def get_queryset(self):
-        return Task.objects.filter(user=self.request.user) 
+    permission_classes = [IsAdminOrSelf]
+    # def get_queryset(self):
+    #     return Task.objects.filter(user=self.request.user) 
     
 
 class TaskDetailView(generics.RetrieveAPIView):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminOrSelf]
 
-    def get_queryset(self):
-        return Task.objects.filter(user=self.request.user) 
+    # def get_queryset(self):
+    #     return Task.objects.filter(user=self.request.user) 
 
 
 class TaskUpdateView(generics.UpdateAPIView):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminOrSelf]
 
     def perform_update(self, serializer):
         task = serializer.save()
@@ -234,14 +246,11 @@ class TaskUpdateView(generics.UpdateAPIView):
 class TaskDeleteView(generics.DestroyAPIView):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
-    permission_classes = [IsAuthenticated] 
-
-    def get_queryset(self):
-        return Task.objects.filter(user=self.request.user)
+    permission_classes = [IsAdminOrSelf] 
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdminOrSelf])
 def tasks_by_category(request):
     user = request.user
     category = request.query_params.get('category', None)
@@ -257,7 +266,7 @@ def tasks_by_category(request):
 
 class ProfileDetailUpdateView(generics.RetrieveUpdateAPIView):
     serializer_class = ProfileSerializer
-    permission_classes = [permissions.IsAuthenticated]  # Ensure user is logged in
+    permission_classes = [IsAdminOrSelf]  # Ensure user is logged in
 
     # Get the profile of the logged-in user
     def get_object(self):
@@ -358,7 +367,7 @@ class GoogleLoginCallback(APIView):
 
 
 class UpdatePhoneNumberView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminOrSelf]
 
     def post(self, request, *args, **kwargs):
         serializer = PhoneNumberSerializer(data=request.data)
@@ -500,7 +509,7 @@ def refresh_google_token(refresh_token):
     return None, None
 
 class RefreshGoogleToken(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminOrSelf]
 
     def post(self, request):
         user = request.user

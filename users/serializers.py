@@ -6,24 +6,37 @@ class TaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
         fields = (
-            'id', 
-            'user', 
-            'title', 
-            'description', 
-            'priority', 
+            'id',
+            'user',
+            'title',
+            'description',
+            'priority',
             'category',  
             'status',    
-            'recurrence', 
-            'deadline', 
-            'created_at', 
+            'recurrence',
+            'deadline',
+            'created_at',
             'updated_at'
         )
-        read_only_fields = ('user', 'created_at', 'updated_at')
+        read_only_fields = ('created_at', 'updated_at')
 
     def create(self, validated_data):
-        # Automatically assign the current user to the task when creating
-        validated_data['user'] = self.context['request'].user
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            if 'user' in validated_data:
+                user_id = validated_data.get('user')
+                print("Ulla vantan\n" , validated_data)
+                if isinstance(user_id, int):
+                    validated_data['user'] = User.objects.get(id=user_id)
+                elif not isinstance(user_id, User):
+                    raise serializers.ValidationError("Invalid user data provided.")
+            else:
+                validated_data['user'] = request.user
+        else:
+            raise serializers.ValidationError("Authentication required to create a task.")
+        
         return Task.objects.create(**validated_data)
+
 
     def update(self, instance, validated_data):
         # Update task instance with validated data
@@ -31,7 +44,6 @@ class TaskSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
         return instance
-
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
