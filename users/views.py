@@ -335,14 +335,18 @@ class GoogleLoginCallback(APIView):
                 user.last_name = ' '.join(name.split()[1:]) if name and len(name.split()) > 1 else ''
                 user.save()
 
+                refresh = RefreshToken.for_user(user)
+                access_token = str(refresh.access_token)
 
                 return Response({
                     'user_id': user.id,
                     'email': user.email,
                     'name': user.get_full_name(),
                     'message': 'User successfully added/updated',
-                    # 'access_token': access_token,  # Uncomment if using JWT
+                    'access_token': access_token,
+                    'refresh_token': str(refresh),
                 }, status=status.HTTP_200_OK)
+            
             else:
                 return Response({'error': 'Failed to obtain tokens', 'details': tokens}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -381,46 +385,46 @@ class UpdatePhoneNumberView(APIView):
 
 #----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-class GoogleLoginView(APIView):
-    """
-    Redirects to Google's OAuth 2.0 consent screen for login.
-    """
-    def get(self, request, *args, **kwargs):
-        flow = Flow.from_client_secrets_file(
-            settings.GOOGLE_OAUTH_CLIENT_SECRETS_FILE,
-            scopes=['https://www.googleapis.com/auth/calendar'],
-            redirect_uri=settings.REDIRECT_URI
-        )
+# class GoogleLoginView(APIView):
+#     """
+#     Redirects to Google's OAuth 2.0 consent screen for login.
+#     """
+#     def get(self, request, *args, **kwargs):
+#         flow = Flow.from_client_secrets_file(
+#             settings.GOOGLE_OAUTH_CLIENT_SECRETS_FILE,
+#             scopes=['https://www.googleapis.com/auth/calendar'],
+#             redirect_uri=settings.REDIRECT_URI
+#         )
 
-        authorization_url, _ = flow.authorization_url(
-            access_type='offline',
-            prompt='consent'  # Ensure refresh token is granted
-        )
+#         authorization_url, _ = flow.authorization_url(
+#             access_type='offline',
+#             prompt='consent'  # Ensure refresh token is granted
+#         )
         
-        return redirect(authorization_url)
+#         return redirect(authorization_url)
 
 
-class GoogleCallbackView(APIView):
-    def get(self, request, *args, **kwargs):
-        flow = Flow.from_client_secrets_file(
-            settings.GOOGLE_OAUTH_CLIENT_SECRETS_FILE,
-            scopes=['https://www.googleapis.com/auth/calendar'],
-            redirect_uri=settings.REDIRECT_URI
-        )
+# class GoogleCallbackView(APIView):
+#     def get(self, request, *args, **kwargs):
+#         flow = Flow.from_client_secrets_file(
+#             settings.GOOGLE_OAUTH_CLIENT_SECRETS_FILE,
+#             scopes=['https://www.googleapis.com/auth/calendar'],
+#             redirect_uri=settings.REDIRECT_URI
+#         )
 
-        flow.fetch_token(authorization_response=request.build_absolute_uri())
-        credentials = flow.credentials
+#         flow.fetch_token(authorization_response=request.build_absolute_uri())
+#         credentials = flow.credentials
 
-        if not request.user.is_authenticated:
-            return JsonResponse({'error': 'User not authenticated'}, status=401)
+#         if not request.user.is_authenticated:
+#             return JsonResponse({'error': 'User not authenticated'}, status=401)
 
-        profile = request.user.profile
-        profile.google_access_token = credentials.token
-        profile.google_refresh_token = credentials.refresh_token
-        profile.google_token_expiry = timezone.now() + timedelta(seconds=credentials.expiry)
-        profile.save()
+#         profile = request.user.profile
+#         profile.google_access_token = credentials.token
+#         profile.google_refresh_token = credentials.refresh_token
+#         profile.google_token_expiry = timezone.now() + timedelta(seconds=credentials.expiry)
+#         profile.save()
 
-        return JsonResponse({'message': 'Google OAuth login successful'})
+#         return JsonResponse({'message': 'Google OAuth login successful'})
 
 
 
@@ -477,3 +481,39 @@ class TaskSyncGoogleCalendarView(APIView):
             return JsonResponse({'message': 'Task synced to Google Calendar', 'event': event}, status=201)
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
+
+import requests
+from django.conf import settings
+
+def refresh_google_token(refresh_token):
+    refresh_url = 'https://oauth2.googleapis.com/token'
+    payload = {
+        'client_id': settings.GOOGLE_OAUTH2_CLIENT_ID,
+        'client_secret': settings.GOOGLE_OAUTH2_CLIENT_SECRET,
+        'refresh_token': refresh_token,
+        'grant_type': 'refresh_token'
+    }
+    response = requests.post(refresh_url, data=payload)
+    if response.status_code == 200:
+        new_tokens = response.json()
+        return new_tokens['access_token'], new_tokens.get('refresh_token', refresh_token)
+    return None, None
+
+class RefreshGoogleToken(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        stored_refresh_token = user.google_refresh_token
+
+        new_access_token, new_refresh_token = refresh_google_token(stored_refresh_token)
+
+        if new_access_token:
+            user.google_access_token = new_access_token
+            if new_refresh_token:
+                user.google_refresh_token = new_refresh_token
+            user.save()
+
+            return Response({'access_token': new_access_token}, status=status.HTTP_200_OK)
+        else:
+            return Response({'error': 'Failed to refresh token'}, status=status.HTTP_400_BAD_REQUEST)
