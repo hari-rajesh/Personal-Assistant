@@ -32,9 +32,9 @@ AUTH_USER_MODEL = 'users.User'
 import os
 # Constants
 GOOGLE_OAUTH2_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
-CLIENT_ID = '712661629464-jele9q8i3vogmi05tljpaa0q56kjkv13.apps.googleusercontent.com'
-CLIENT_SECRET = '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'
-REDIRECT_URI = 'http://localhost:8000/oauth2callback/'
+CLIENT_ID = '712661629464-1n6p1ngverhl197cqb29aj3echs97t4b.apps.googleusercontent.com'
+CLIENT_SECRET = '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'
+REDIRECT_URI = 'http://localhost:8000/users/oauth2callback/'
 SCOPE = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/userinfo.email'
 GOOGLE_OAUTH_CLIENT_SECRETS_FILE = os.path.join(BASE_DIR, 'users/credentials.json')
 
@@ -47,13 +47,55 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.sites',
     'users',
     'rest_framework',
     'rest_framework.authtoken',
     'drf_yasg',
     'rest_framework_simplejwt.token_blacklist',
     'rest_framework_simplejwt',
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',
+    'dj_rest_auth',
+    'dj_rest_auth.registration',
+    'social_django',
+
 ]
+
+
+AUTHENTICATION_BACKENDS = (
+    'django.contrib.auth.backends.ModelBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
+)
+
+
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'APP': {
+            'client_id': '712661629464-jele9q8i3vogmi05tljpaa0q56kjkv13.apps.googleusercontent.com',
+            'secret': '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',
+        },
+        'SCOPE': [
+            'profile',
+            'email',
+        ],
+        'AUTH_PARAMS': {
+            'access_type': 'online',
+        },
+        'OAUTH_PKCE_ENABLED': True,
+        'REDIRECT_URI': 'http://127.0.0.1:8000/auth/social/custom/login/', # Replace with your redirect URL
+
+    }
+}
+
+
+SITE_ID = 1
+
+# Enable JWT support with dj-rest-auth
+REST_USE_JWT = True
+
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME':timedelta(minutes=5),
@@ -72,6 +114,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+
+    'allauth.account.middleware.AccountMiddleware',
 ]
 
 SWAGGER_SETTINGS = {
@@ -109,13 +153,14 @@ WSGI_APPLICATION = 'PersonalAssistant.wsgi.application'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES':[
-        'rest_framework_simplejwt.authentication.JWTAuthentication'
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+
     ],
     'DEFAULT_PERMISSION_CLASSES':[
         'rest_framework.permissions.IsAuthenticated'
     ]
 }
-
 
 
 

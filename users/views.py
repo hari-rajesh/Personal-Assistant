@@ -1,7 +1,7 @@
 from rest_framework import generics, status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from .models import  Task, Profile
-from .serializers import TaskSerializer, ProfileSerializer, UserSerializer, LoginSerializer, UpdateSerializer
+from .serializers import TaskSerializer, ProfileSerializer, UserSerializer, LoginSerializers, UpdateSerializer, PhoneNumberSerializer
 from rest_framework.authtoken.models import Token
 from django.core.mail import send_mail
 from django.conf import settings
@@ -28,6 +28,7 @@ from google.auth.exceptions import RefreshError
 from rest_framework.views import APIView
 from google_auth_oauthlib.flow import Flow
 import logging
+from django.views.decorators.csrf import csrf_exempt
 
 
 @swagger_auto_schema(
@@ -78,13 +79,13 @@ class UserDeleteView(generics.DestroyAPIView):
 
 @swagger_auto_schema(
     method='post',
-    request_body=LoginSerializer,
+    request_body=LoginSerializers,
     responses={200: 'Login Successful', 400: 'Bad Request'}
 )
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_view(request):
-    serializer = LoginSerializer(data=request.data)
+    serializer = LoginSerializers(data=request.data)
     if serializer.is_valid():
         user1 = serializer.validated_data['user']
         username = request.data.get('username')
@@ -262,6 +263,123 @@ class ProfileDetailUpdateView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         return Profile.objects.get(user=self.request.user)
     
+from rest_framework import serializers
+from dj_rest_auth.registration.views import SocialLoginView
+from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
+
+
+User = get_user_model()
+def get_tokens_for_user(user):
+    refresh = RefreshToken.for_user(user)
+    return {
+        'refresh': str(refresh),
+        'access': str(refresh.access_token),
+    }
+
+
+
+from django.contrib.auth import get_user_model
+from django.conf import settings
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import AllowAny
+import requests
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+
+User = get_user_model()
+
+class GoogleLoginCallback(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        code = request.query_params.get('code')
+        if not code:
+            return Response({'error': 'Authorization code not provided'}, status=status.HTTP_400_BAD_REQUEST)
+
+        token_url = 'https://oauth2.googleapis.com/token'
+        payload = {
+            'code': code,
+            'client_id': settings.CLIENT_ID,
+            'client_secret': settings.CLIENT_SECRET,
+            'redirect_uri': settings.REDIRECT_URI,
+            'grant_type': 'authorization_code',
+        }
+
+        try:
+            response = requests.post(token_url, data=payload, timeout=10)
+            response.raise_for_status()
+            tokens = response.json()
+
+            if 'access_token' in tokens and 'id_token' in tokens:
+                access_token = tokens['access_token']
+                id_token_jwt = tokens['id_token']
+
+                idinfo = id_token.verify_oauth2_token(
+                    id_token_jwt, google_requests.Request(), settings.CLIENT_ID)
+
+                if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
+                    raise ValueError('Wrong issuer.')
+
+                email = idinfo['email']
+                name = idinfo.get('name', '')
+                
+                # Create or update user in the database
+                user, created = User.objects.get_or_create(email=email)
+                if created:
+                    user.username = email  # Set username to email if it's a new user
+                    user.set_unusable_password()  # Set an unusable password for social auth users
+                user.first_name = name.split()[0] if name else ''
+                user.last_name = ' '.join(name.split()[1:]) if name and len(name.split()) > 1 else ''
+                user.save()
+
+
+                return Response({
+                    'user_id': user.id,
+                    'email': user.email,
+                    'name': user.get_full_name(),
+                    'message': 'User successfully added/updated',
+                    # 'access_token': access_token,  # Uncomment if using JWT
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({'error': 'Failed to obtain tokens', 'details': tokens}, status=status.HTTP_400_BAD_REQUEST)
+
+        except requests.exceptions.RequestException as e:
+            return Response({'error': 'Network error occurred', 'details': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except ValueError as e:
+            return Response({'error': 'Invalid token', 'details': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+class UpdatePhoneNumberView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        serializer = PhoneNumberSerializer(data=request.data)
+        if serializer.is_valid():
+            mobile_number = serializer.validated_data['mobile_number']
+
+            request.user.mobile_number = mobile_number
+            request.user.save()
+
+            return Response({'message': 'Mobile number updated successfully!'})
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+
+
+
+
+
+
+
+
+
+#----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 class GoogleLoginView(APIView):
     """
     Redirects to Google's OAuth 2.0 consent screen for login.

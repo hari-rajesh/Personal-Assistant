@@ -34,6 +34,7 @@ def send_email_via_gmail(subject, body, to):
         print(f'An error occurred: {error}')
         return False
     
+    
 def authenticate_and_save_token():
     # Update the scopes to include both Gmail and Calendar scopes
     scopes = [
