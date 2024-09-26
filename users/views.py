@@ -277,6 +277,7 @@ def get_tokens_for_user(user):
     }
 
 
+from django.apps import apps
 
 from django.contrib.auth import get_user_model
 from django.conf import settings
@@ -288,7 +289,7 @@ import requests
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 
-User = get_user_model()
+User = apps.get_model(settings.AUTH_USER_MODEL)
 
 class GoogleLoginCallback(APIView):
     permission_classes = [AllowAny]
