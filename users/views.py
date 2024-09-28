@@ -1,7 +1,7 @@
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from .models import  Task, Profile
-from .serializers import TaskSerializer, ProfileSerializer, UserSerializer, LoginSerializers, UpdateSerializer, PhoneNumberSerializer, GoogleCalendarEventSerializer
+from .serializers import TaskSerializer, ProfileSerializer, UserSerializer, LoginSerializers, UpdateSerializer, PhoneNumberSerializer
 from django.conf import settings
 from .oauth import send_email_via_gmail
 from .utils import send_sms_via_twilio
@@ -498,30 +498,13 @@ class GoogleCalendarEventView(APIView):
         if not request.user.is_authenticated:
             return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        serializer = GoogleCalendarEventSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-        access_token = serializer.validated_data['access_token']
-        # refresh_token = serializer.validated_data['refresh_token']
-        token_expiry_time = serializer.validated_data['token_expiry_time']
-
-
         try:
             user1 = request.user
             task = Task.objects.get(id=id, user=request.user)
+
         except Task.DoesNotExist:
             return Response({'error': 'Task not found or you do not have permission to access it.'}, status=status.HTTP_404_NOT_FOUND)
 
-
-        if not token_expiry_time:
-            return Response({'error': 'Token expiry time not provided'}, status=status.HTTP_400_BAD_REQUEST)
-
-
-        token_expiry_time = datetime.now() + timedelta(seconds=token_expiry_time)
-
-        logger.info(f"Creating calendar event for task {task.id} with access token {access_token[:10]}...")
 
         event, expires_in = create_google_calendar_event(user1, task)
 
