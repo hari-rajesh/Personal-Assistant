@@ -45,6 +45,14 @@ class TaskSerializer(serializers.ModelSerializer):
         instance.save()
         return instance
 
+
+class GoogleCalendarEventSerializer(serializers.Serializer):
+    task_id = serializers.IntegerField(required=True)
+    access_token = serializers.CharField(required=True)
+    refresh_token = serializers.CharField(required=True)
+    token_expiry_time = serializers.IntegerField(required=True) 
+
+
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User

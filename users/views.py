@@ -1,14 +1,10 @@
-from rest_framework import generics, status, permissions
+from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from .models import  Task, Profile
-from .serializers import TaskSerializer, ProfileSerializer, UserSerializer, LoginSerializers, UpdateSerializer, PhoneNumberSerializer
-from rest_framework.authtoken.models import Token
-from django.core.mail import send_mail
+from .serializers import TaskSerializer, ProfileSerializer, UserSerializer, LoginSerializers, UpdateSerializer, PhoneNumberSerializer, GoogleCalendarEventSerializer
 from django.conf import settings
 from .oauth import send_email_via_gmail
-from django.http import HttpResponse
 from .utils import send_sms_via_twilio
-from django.shortcuts import render, redirect
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
@@ -20,21 +16,20 @@ from django.contrib.auth import get_user_model
 from datetime import datetime, timedelta
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-from django.http import JsonResponse
 import requests
-from google.auth.transport.requests import Request
-from google.auth.exceptions import RefreshError
 from rest_framework.views import APIView
-from google_auth_oauthlib.flow import Flow
-import logging
-from django.views.decorators.csrf import csrf_exempt
 from rest_framework.permissions import BasePermission
-
+from django.apps import apps
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token
+from datetime import datetime
+current_time = datetime.now().isoformat()
 
 class IsAdminOrSelf(BasePermission):
     def has_object_permission(self, request, view, obj):
         return obj == request.user or request.user.profile.user_type == 'admin'
+
 
 @swagger_auto_schema(
     method='post',
@@ -199,8 +194,8 @@ class TaskCreateView(generics.CreateAPIView):
 class TaskListView(generics.ListAPIView):
     serializer_class = TaskSerializer
     permission_classes = [IsAdminOrSelf]
-    # def get_queryset(self):
-    #     return Task.objects.filter(user=self.request.user) 
+    def get_queryset(self):
+        return Task.objects.filter(user=self.request.user) 
     
 
 class TaskDetailView(generics.RetrieveAPIView):
@@ -285,84 +280,73 @@ def get_tokens_for_user(user):
         'access': str(refresh.access_token),
     }
 
-
-from django.apps import apps
-
-from django.contrib.auth import get_user_model
-from django.conf import settings
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.permissions import AllowAny
-import requests
-from google.oauth2 import id_token
-from google.auth.transport import requests as google_requests
-
 User = apps.get_model(settings.AUTH_USER_MODEL)
+
 
 class GoogleLoginCallback(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        code = request.query_params.get('code')
-        if not code:
-            return Response({'error': 'Authorization code not provided'}, status=status.HTTP_400_BAD_REQUEST)
-
-        token_url = 'https://oauth2.googleapis.com/token'
-        payload = {
-            'code': code,
-            'client_id': settings.CLIENT_ID,
-            'client_secret': settings.CLIENT_SECRET,
-            'redirect_uri': settings.REDIRECT_URI,
-            'grant_type': 'authorization_code',
-        }
-
         try:
-            response = requests.post(token_url, data=payload, timeout=10)
-            response.raise_for_status()
-            tokens = response.json()
+            code = request.query_params.get('code')
+            if not code:
+                return Response({'error': 'Missing authorization code.'}, status=status.HTTP_400_BAD_REQUEST)
 
-            if 'access_token' in tokens and 'id_token' in tokens:
-                access_token = tokens['access_token']
-                id_token_jwt = tokens['id_token']
+            token_url = "https://oauth2.googleapis.com/token"
+            data = {
+                'code': code,
+                'client_id': settings.CLIENT_ID,
+                'client_secret': settings.CLIENT_SECRET,
+                'redirect_uri': settings.REDIRECT_URI,
+                'grant_type': 'authorization_code'
+            }
+            response = requests.post(token_url, data=data)
+            token_info = response.json()
 
-                idinfo = id_token.verify_oauth2_token(
-                    id_token_jwt, google_requests.Request(), settings.CLIENT_ID)
+            if response.status_code == 200 and 'access_token' in token_info:
+                access_token = token_info['access_token']
+                refresh_token = token_info.get('refresh_token')
+                expires_in = token_info['expires_in']
+                expiration_time = timezone.now() + timedelta(seconds=expires_in)
 
-                if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
-                    raise ValueError('Wrong issuer.')
+                user_info_url = f"https://www.googleapis.com/oauth2/v1/userinfo?access_token={access_token}"
+                user_info_response = requests.get(user_info_url)
 
-                email = idinfo['email']
-                name = idinfo.get('name', '')
-                
-                # Create or update user in the database
-                user, created = User.objects.get_or_create(email=email)
-                if created:
-                    user.username = email  # Set username to email if it's a new user
-                    user.set_unusable_password()  # Set an unusable password for social auth users
-                user.first_name = name.split()[0] if name else ''
-                user.last_name = ' '.join(name.split()[1:]) if name and len(name.split()) > 1 else ''
-                user.save()
+                if user_info_response.status_code == 200:
+                    user_info = user_info_response.json()
+                    users = User.objects.filter(email=user_info['email'])
+                    user = users.first()
 
-                refresh = RefreshToken.for_user(user)
-                access_token = str(refresh.access_token)
+                    if not users.exists():
+                        user = User.objects.create(
+                            email=user_info['email'],
+                            username=user_info.get('email', '').split('@')[0],
+                            first_name=user_info.get('given_name', ''),
+                            last_name=user_info.get('family_name', '')
+                        )
 
-                return Response({
-                    'user_id': user.id,
-                    'email': user.email,
-                    'name': user.get_full_name(),
-                    'message': 'User successfully added/updated',
-                    'access_token': access_token,
-                    'refresh_token': str(refresh),
-                }, status=status.HTTP_200_OK)
-            
-            else:
-                return Response({'error': 'Failed to obtain tokens', 'details': tokens}, status=status.HTTP_400_BAD_REQUEST)
+                    # Update or create profile
+                    profile, _ = Profile.objects.get_or_create(user=user)
+                    profile.google_access_token = access_token
+                    profile.google_refresh_token = refresh_token
+                    profile.google_token_expires_at = expiration_time
+                    profile.save()
 
-        except requests.exceptions.RequestException as e:
-            return Response({'error': 'Network error occurred', 'details': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        except ValueError as e:
-            return Response({'error': 'Invalid token', 'details': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+                    refresh = RefreshToken.for_user(user)
+                    return Response({
+                        'message': 'User successfully logged in.',
+                        'access': str(refresh.access_token),
+                        'refresh': str(refresh),
+                    }, status=status.HTTP_200_OK)
+
+                return Response({'error': 'Failed to fetch user info.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            return Response({'error': 'Failed to obtain access token.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        except requests.RequestException as e:
+            return Response({'error': f'HTTP Request failed: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            return Response({'error': f'Unexpected error: {e}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
@@ -383,146 +367,173 @@ class UpdatePhoneNumberView(APIView):
 
 
 
-
-
-
-
-
-
-
-
-
-#----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-# class GoogleLoginView(APIView):
-#     """
-#     Redirects to Google's OAuth 2.0 consent screen for login.
-#     """
-#     def get(self, request, *args, **kwargs):
-#         flow = Flow.from_client_secrets_file(
-#             settings.GOOGLE_OAUTH_CLIENT_SECRETS_FILE,
-#             scopes=['https://www.googleapis.com/auth/calendar'],
-#             redirect_uri=settings.REDIRECT_URI
-#         )
-
-#         authorization_url, _ = flow.authorization_url(
-#             access_type='offline',
-#             prompt='consent'  # Ensure refresh token is granted
-#         )
-        
-#         return redirect(authorization_url)
-
-
-# class GoogleCallbackView(APIView):
-#     def get(self, request, *args, **kwargs):
-#         flow = Flow.from_client_secrets_file(
-#             settings.GOOGLE_OAUTH_CLIENT_SECRETS_FILE,
-#             scopes=['https://www.googleapis.com/auth/calendar'],
-#             redirect_uri=settings.REDIRECT_URI
-#         )
-
-#         flow.fetch_token(authorization_response=request.build_absolute_uri())
-#         credentials = flow.credentials
-
-#         if not request.user.is_authenticated:
-#             return JsonResponse({'error': 'User not authenticated'}, status=401)
-
-#         profile = request.user.profile
-#         profile.google_access_token = credentials.token
-#         profile.google_refresh_token = credentials.refresh_token
-#         profile.google_token_expiry = timezone.now() + timedelta(seconds=credentials.expiry)
-#         profile.save()
-
-#         return JsonResponse({'message': 'Google OAuth login successful'})
-
-
-
-
-class TaskSyncGoogleCalendarView(APIView):
-
-    def post(self, request, *args, **kwargs):
-        if not request.user.is_authenticated:
-            return JsonResponse({'error': 'User is not authenticated'}, status=401)
-
-        profile = request.user.profile
-        access_token = profile.google_access_token
-        refresh_token = profile.google_refresh_token
-
-        if not access_token or not refresh_token:
-            return JsonResponse({'error': 'User is not authenticated with Google'}, status=400)
-
-        # Build credentials from the user's profile tokens
-        credentials = Credentials(
-            token=access_token,
-            refresh_token=refresh_token,
-            token_uri='https://oauth2.googleapis.com/token',
-            client_id=settings.CLIENT_ID,
-            client_secret=settings.CLIENT_SECRET
-        )
-
-        # Build the Google Calendar API service
-        service = build('calendar', 'v3', credentials=credentials)
-
-        # Example task data (you may want to get this from the request)
-        task_data = request.data  # Assuming task data is passed in the request
-        event = {
-            'summary': task_data.get('title', 'Sample Task from Django App'),
-            'description': task_data.get('description', 'This is a task synced from the Django app.'),
-            'start': {
-                'dateTime': task_data.get('start', '2024-09-30T09:00:00-07:00'),
-                'timeZone': 'America/Los_Angeles',
-            },
-            'end': {
-                'dateTime': task_data.get('end', '2024-09-30T10:00:00-07:00'),
-                'timeZone': 'America/Los_Angeles',
-            },
-            'reminders': {
-                'useDefault': False,
-                'overrides': [
-                    {'method': 'email', 'minutes': 24 * 60},
-                    {'method': 'popup', 'minutes': 10},
-                ],
-            },
-        }
-
-        try:
-            event = service.events().insert(calendarId='primary', body=event).execute()
-            return JsonResponse({'message': 'Task synced to Google Calendar', 'event': event}, status=201)
-        except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
-
-import requests
-from django.conf import settings
-
-def refresh_google_token(refresh_token):
-    refresh_url = 'https://oauth2.googleapis.com/token'
+def refresh_google_access_token(refresh_token):
+    token_url = 'https://oauth2.googleapis.com/token'
     payload = {
-        'client_id': settings.GOOGLE_OAUTH2_CLIENT_ID,
-        'client_secret': settings.GOOGLE_OAUTH2_CLIENT_SECRET,
+        'client_id': settings.CLIENT_ID,
+        'client_secret': settings.CLIENT_SECRET,
         'refresh_token': refresh_token,
-        'grant_type': 'refresh_token'
+        'grant_type': 'refresh_token',
     }
-    response = requests.post(refresh_url, data=payload)
-    if response.status_code == 200:
-        new_tokens = response.json()
-        return new_tokens['access_token'], new_tokens.get('refresh_token', refresh_token)
-    return None, None
 
-class RefreshGoogleToken(APIView):
+    response = requests.post(token_url, data=payload)
+    if response.status_code == 200:
+        tokens = response.json()
+        return tokens['access_token'], tokens.get('expires_in', 3600)
+    return None, None  # Return None for both if refresh fails
+
+import pytz
+
+def format_datetime(dt_string):
+    original_dt = datetime.strptime(dt_string, "%Y-%m-%d %H:%M:%S.%f")
+    desired_tz = pytz.timezone("Asia/Kolkata")
+    localized_dt = desired_tz.localize(original_dt)
+    formatted_dt = localized_dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+    formatted_dt = formatted_dt[:-2] + ":" + formatted_dt[-2:]
+
+    return formatted_dt
+
+
+def create_google_calendar_event(user1, task):
+    token_expiry_time = user1.profile.google_token_expires_at
+    refresh_token = user1.profile.google_refresh_token
+    access_token = user1.profile.google_access_token
+    expires_in = None  # Initialize expires_in at the start of the function     
+    # Check if the access token is expired
+    if timezone.now() >= token_expiry_time:
+        print("Access token has expired. Refreshing the token...")
+        # Refresh the access token using the refresh token
+        access_token, expires_in = refresh_google_access_token(refresh_token)
+        if not access_token:
+            return {'error': 'Failed to refresh the access token.'}, None  # Explicitly return error
+    
+    creds = Credentials(token=access_token)
+
+    service = build('calendar', 'v3', credentials=creds)
+
+    current_time = format_datetime(timezone.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
+    task_deadline = format_datetime(task.deadline.strftime("%Y-%m-%d %H:%M:%S.%f"))
+
+    event = {
+        'summary': task.title,
+        'location': 'Google Meet',
+        'description': task.description,
+        'start': {
+            'dateTime': task_deadline,
+            'timeZone': 'Asia/Kolkata',
+        },
+        'end': {
+            'dateTime': current_time,
+            'timeZone': 'Asia/Kolkata',
+        },
+        'reminders': {
+            'useDefault': False,
+            'overrides': [
+                {'method': 'email', 'minutes': 24 * 60},  # Email reminder 1 day before
+                {'method': 'popup', 'minutes': 10},       # Popup reminder 10 minutes before
+            ],
+        },
+    }
+
+    try:
+        event = service.events().insert(calendarId='primary', body=event).execute()
+        return event, expires_in
+    except Exception as e:
+        return {'error': str(e)}, None  # Handle Google API errors
+
+
+# def create_google_calendar_event(access_token, refresh_token, token_expiry_time, task):
+#     expires_in = None  # Initialize expires_in at the start of the function     
+#     # Check if the access token is expired
+#     if datetime.now() >= token_expiry_time:
+#         print("Access token has expired. Refreshing the token...")
+#         # Refresh the access token using the refresh token
+#         access_token, expires_in = refresh_google_access_token(refresh_token)
+#         if not access_token:
+#             return {'error': 'Failed to refresh the access token.'}, None  # Explicitly return error
+
+#     creds = Credentials(token=access_token)
+#     service = build('calendar', 'v3', credentials=creds)
+
+#     event = {
+#         'summary': task.title,  # Use task title
+#         'location': task.location if hasattr(task, 'location') else '',  # Use task location if exists
+#         'description': task.description,  # Use task description
+#         'start': {
+#             'dateTime': task.start_time.isoformat(),  # Ensure task has start_time
+#             'timeZone': 'America/Los_Angeles',  # Adjust time zone as needed
+#         },
+#         'end': {
+#             'dateTime': task.deadline.isoformat(),  # Ensure task has end_time
+#             'timeZone': 'America/Los_Angeles',  # Adjust time zone as needed
+#         },
+#         'reminders': {
+#             'useDefault': False,
+#             'overrides': [
+#                 {'method': 'email', 'minutes': 24 * 60},  # Email reminder 1 day before
+#                 {'method': 'popup', 'minutes': 10},       # Popup reminder 10 minutes before
+#             ],
+#         },
+#     }
+
+#     try:
+#         event = service.events().insert(calendarId='primary', body=event).execute()
+#         return event, expires_in
+#     except Exception as e:
+#         return {'error': str(e)}, None  # Handle Google API errors
+
+
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+class GoogleCalendarEventView(APIView):
     permission_classes = [IsAdminOrSelf]
 
-    def post(self, request):
-        user = request.user
-        stored_refresh_token = user.google_refresh_token
 
-        new_access_token, new_refresh_token = refresh_google_token(stored_refresh_token)
+    def post(self, request, id):
+        print(f"Request user: {request.user}, Data: {request.data}, Task ID: {id}")
 
-        if new_access_token:
-            user.google_access_token = new_access_token
-            if new_refresh_token:
-                user.google_refresh_token = new_refresh_token
-            user.save()
+        if not request.user.is_authenticated:
+            return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
 
-            return Response({'access_token': new_access_token}, status=status.HTTP_200_OK)
+        serializer = GoogleCalendarEventSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+        access_token = serializer.validated_data['access_token']
+        # refresh_token = serializer.validated_data['refresh_token']
+        token_expiry_time = serializer.validated_data['token_expiry_time']
+
+
+        try:
+            user1 = request.user
+            task = Task.objects.get(id=id, user=request.user)
+        except Task.DoesNotExist:
+            return Response({'error': 'Task not found or you do not have permission to access it.'}, status=status.HTTP_404_NOT_FOUND)
+
+
+        if not token_expiry_time:
+            return Response({'error': 'Token expiry time not provided'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+        token_expiry_time = datetime.now() + timedelta(seconds=token_expiry_time)
+
+        logger.info(f"Creating calendar event for task {task.id} with access token {access_token[:10]}...")
+
+        event, expires_in = create_google_calendar_event(user1, task)
+
+        if event is None or 'error' in event:
+            return Response({'error': event.get('error', 'Unknown error occurred')}, status=status.HTTP_400_BAD_REQUEST)
+
+
+        if expires_in:
+            new_expiry_time = datetime.now() + timedelta(seconds=expires_in)
+            return Response({
+                'event': event,
+                'new_token_expiry_time': new_expiry_time.isoformat()
+            }, status=status.HTTP_201_CREATED)
         else:
-            return Response({'error': 'Failed to refresh token'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'event': event}, status=status.HTTP_201_CREATED)

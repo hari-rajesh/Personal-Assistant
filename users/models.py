@@ -84,10 +84,9 @@ class Profile(models.Model):
     enable_sms = models.BooleanField(default=False)
     user_type = models.CharField(max_length=10, choices=USER_TYPE_CHOICES, default='guest')
 
-    # Google OAuth tokens
-    google_access_token = models.TextField(blank=True, null=True)
-    google_refresh_token = models.TextField(blank=True, null=True)
-    google_token_expiry = models.DateTimeField(blank=True, null=True)
+    google_access_token = models.CharField(max_length=500, blank=True, null=True)  # Store the access token
+    google_refresh_token = models.CharField(max_length=500, blank=True, null=True) # Store the refresh token
+    google_token_expires_at = models.DateTimeField(blank=True, null=True)
 
     def has_valid_google_access_token(self):
         """

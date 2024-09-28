@@ -5,7 +5,7 @@ from .views import (
 )
 from .views import (
     TaskCreateView, TaskDeleteView, TaskDetailView, TaskListView, TaskUpdateView, tasks_by_category,
-    TaskSyncGoogleCalendarView,UpdatePhoneNumberView, GoogleLoginCallback, RefreshGoogleToken
+    UpdatePhoneNumberView, GoogleLoginCallback, GoogleCalendarEventView
 )
 
 urlpatterns = [
@@ -23,8 +23,9 @@ urlpatterns = [
     path('tasks/<int:pk>/edit/', TaskUpdateView.as_view(), name='edit_task'),
     path('tasks/<int:pk>/delete/', TaskDeleteView.as_view(), name='delete_task'),
     path('tasks/category/', tasks_by_category, name='tasks-by-category'),
-    path('tasks/sync-google-calendar/', TaskSyncGoogleCalendarView.as_view(), name='sync_google_calendar'),
     path('dj-rest-auth/update-phone/', UpdatePhoneNumberView.as_view(), name='update_phone'),
     path('oauth2callback/', GoogleLoginCallback.as_view(), name='oauth2callback'),
-    path('refresh-google-token/', RefreshGoogleToken.as_view(), name='refresh-google-token'),
+    path('googlecalendar/<int:id>/add/', GoogleCalendarEventView.as_view(), name='sync_google_calendar'),
+    # path('googlecalendar/', GoogleCalendarEventViewToken.as_view(), name='googlecalendar')
+
 ]
