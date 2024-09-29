@@ -27,5 +27,4 @@ urlpatterns = [
     path('oauth2callback/', GoogleLoginCallback.as_view(), name='oauth2callback'),
     path('googlecalendar/<int:id>/add/', GoogleCalendarEventView.as_view(), name='sync_google_calendar'),
     # path('googlecalendar/', GoogleCalendarEventViewToken.as_view(), name='googlecalendar')
-
 ]

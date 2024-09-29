@@ -1,7 +1,6 @@
 from rest_framework import serializers
 from .models import User, Task, Profile
 from django.contrib.auth import authenticate
-
 class TaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task

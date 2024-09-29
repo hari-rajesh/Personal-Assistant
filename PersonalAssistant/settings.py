@@ -48,7 +48,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.sites',
-    'users',
+    # 'users',
     'rest_framework',
     'rest_framework.authtoken',
     'drf_yasg',
@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'dj_rest_auth',
     'dj_rest_auth.registration',
     'social_django',
+    'users.apps.UsersConfig',
 
 ]
 
@@ -98,12 +99,18 @@ REST_USE_JWT = True
 
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME':timedelta(minutes=5),
+    'ACCESS_TOKEN_LIFETIME':timedelta(minutes=20),
     'REFRESH_TOKEN_LIFETIME':timedelta(days=7),
     'ROTATE_REFRESH_TOKENS':True,
     'BLACKLIST_AFTER_ROTATION':True,
     'AUTH_HEADER_TYPES':('Bearer',),
 }
+
+CELERY_BROKER_URL = 'redis://localhost:6379/0'  # Using Redis as the broker
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_TIMEZONE = 'UTC'
 
 
 MIDDLEWARE = [
