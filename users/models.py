@@ -48,7 +48,7 @@ class Task(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Pending')
     deadline = models.DateTimeField()
     recurrence = models.CharField(max_length=10, choices=RECURRENCE_CHOICES, default='None')
-
+    last_notification_sent = models.DateTimeField(null=True, blank=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
