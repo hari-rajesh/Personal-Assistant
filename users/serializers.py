@@ -128,10 +128,20 @@ class ProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ['user']  # User field should be read-only
 
 
-class PhoneNumberSerializer(serializers.Serializer):
+class PhoneNumberSerializer(serializers.ModelSerializer):
     mobile_number = serializers.CharField(max_length=50)
+
+    class Meta:
+        model = Profile  # Assuming the Profile model contains the mobile_number field
+        fields = ('mobile_number',)
 
     def validate_mobile_number(self, value):
         if len(value) != 10 or not value.isdigit():
             raise serializers.ValidationError("Mobile number must be 10 digits.")
         return value
+    
+class UserQuerySerializer(serializers.Serializer):
+    text = serializers.CharField(required=True)
+
+    class Meta:
+        fields = ['text']

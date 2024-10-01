@@ -36,6 +36,7 @@ def send_reminders(task, task_id, phone_number, email, task_name, deadline):
         try:
             task.save()
             logger.info(f"Successfully updated last_notification_sent for task: {task_name}")
+            
         except Exception as e:
             logger.error(f"Failed to update last_notification_sent for task '{task_name}': {e}")
 

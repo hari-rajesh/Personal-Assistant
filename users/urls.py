@@ -1,7 +1,7 @@
 from django.urls import path, include
 from .views import (
     register_view, update_view, login_view, logout_view, refresh_view, ProfileDetailUpdateView,
-    UserDeleteView
+    UserDeleteView, UserQueryView, TaskRecommendationView
 )
 from .views import (
     TaskCreateView, TaskDeleteView, TaskDetailView, TaskListView, TaskUpdateView, tasks_by_category,
@@ -23,8 +23,12 @@ urlpatterns = [
     path('tasks/<int:pk>/edit/', TaskUpdateView.as_view(), name='edit_task'),
     path('tasks/<int:pk>/delete/', TaskDeleteView.as_view(), name='delete_task'),
     path('tasks/category/', tasks_by_category, name='tasks-by-category'),
-    path('dj-rest-auth/update-phone/', UpdatePhoneNumberView.as_view(), name='update_phone'),
+    path('update-phone/', UpdatePhoneNumberView.as_view(), name='update_phone'),
     path('oauth2callback/', GoogleLoginCallback.as_view(), name='oauth2callback'),
     path('googlecalendar/<int:id>/add/', GoogleCalendarEventView.as_view(), name='sync_google_calendar'),
     # path('googlecalendar/', GoogleCalendarEventViewToken.as_view(), name='googlecalendar')
+    path('tasks/query/', UserQueryView.as_view(), name='task_query'),
+    path('tasks/recommendations/', TaskRecommendationView.as_view(), name='task_recommendations'),
+
+
 ]

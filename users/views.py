@@ -1,7 +1,7 @@
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from .models import  Task, Profile
-from .serializers import TaskSerializer, ProfileSerializer, UserSerializer, LoginSerializers, UpdateSerializer, PhoneNumberSerializer
+from .serializers import TaskSerializer, ProfileSerializer, UserSerializer, LoginSerializers, UpdateSerializer, PhoneNumberSerializer, UserQuerySerializer
 from django.conf import settings
 from .oauth import send_email_via_gmail
 from .utils import send_sms_via_twilio
@@ -22,12 +22,15 @@ from rest_framework.permissions import BasePermission
 from django.apps import apps
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
-from datetime import datetime
+from .spacy import handle_user_query, suggest_tasks
+from rest_framework.permissions import IsAuthenticated
 
 
 current_time = datetime.now().isoformat()
 
 class IsAdminOrSelf(BasePermission):
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated
     def has_object_permission(self, request, view, obj):
         return obj == request.user or request.user.profile.user_type == 'admin'
 
@@ -223,21 +226,21 @@ class TaskUpdateView(generics.UpdateAPIView):
 
             ##Send email via Gmail API using OAuth
 
-            if task.user.profile.enable_email:
+            # if task.user.profile.enable_email:
 
-                success = send_email_via_gmail(subject, message, recipient_list)
-                if success:
-                    print('Email sent successfully')
-                else:
-                    print('Failed to send email')
-                recipient_phone = "+91" + task.user.mobile_number
-            if task.user.profile.enable_sms:
-                sms_body = message
-                sms_success = send_sms_via_twilio(sms_body, recipient_phone)
-                if sms_success:
-                    print('SMS sent successfully')
-                else:
-                    print('Failed to send SMS')
+            #     success = send_email_via_gmail(subject, message, recipient_list)
+            #     if success:
+            #         print('Email sent successfully')
+            #     else:
+            #         print('Failed to send email')
+            #     recipient_phone = "+91" + task.user.mobile_number
+            # if task.user.profile.enable_sms:
+            #     sms_body = message
+            #     sms_success = send_sms_via_twilio(sms_body, recipient_phone)
+            #     if sms_success:
+            #         print('SMS sent successfully')
+            #     else:
+            #         print('Failed to send SMS')
 
 
 class TaskDeleteView(generics.DestroyAPIView):
@@ -359,18 +362,20 @@ class GoogleLoginCallback(APIView):
 
 class UpdatePhoneNumberView(APIView):
     permission_classes = [IsAdminOrSelf]
-
+    @swagger_auto_schema(
+        request_body=PhoneNumberSerializer,
+        responses={200: 'Mobile number updated successfully!'}
+    )
     def post(self, request, *args, **kwargs):
         serializer = PhoneNumberSerializer(data=request.data)
         if serializer.is_valid():
             mobile_number = serializer.validated_data['mobile_number']
+            
+            request.user.profile.mobile_number = mobile_number
+            request.user.profile.save()
 
-            request.user.mobile_number = mobile_number
-            request.user.save()
-
-            return Response({'message': 'Mobile number updated successfully!'})
+            return Response({'message': 'Mobile number updated successfully!'}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 
 
@@ -486,3 +491,34 @@ class GoogleCalendarEventView(APIView):
         else:
             return Response({'event': event}, status=status.HTTP_201_CREATED)
 
+
+
+class UserQueryView(APIView):
+    permission_classes = [IsAuthenticated]
+    @swagger_auto_schema(
+        request_body=UserQuerySerializer,
+        responses={200: 'Query executed successfully'}
+    )
+    def post(self, request):
+        serializer = UserQuerySerializer(data=request.data)
+        
+        if serializer.is_valid():
+            user_input = serializer.validated_data['text']
+            user = request.user
+            
+            response = handle_user_query(user, user_input)
+            
+            if isinstance(response, str):
+                return Response({'message': response}, status=status.HTTP_400_BAD_REQUEST)
+            
+            tasks = [{'title': task.title, 'deadline': task.deadline} for task in response]
+            return Response({'tasks': tasks}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class TaskRecommendationView(APIView):
+    def get(self, request):
+        user = request.user
+        recommended_tasks = suggest_tasks(user)
+        tasks = [{'title': task.title, 'deadline': task.deadline} for task in recommended_tasks]
+        
+        return Response({'recommended_tasks': tasks}, status=status.HTTP_200_OK)
