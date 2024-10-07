@@ -7,38 +7,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-@shared_task
-def send_reminders(task, task_id, phone_number, email, task_name, deadline):
-    sms_body = f"Reminder: Your task '{task_name}' is due at {deadline}. Please complete it soon."
-    email_subject = f"Reminder: Task '{task_name}' Deadline Approaching"
-    email_body = f"Dear User, your task '{task_name}' is due at {deadline}. Please complete it soon."
-
-    notification_sent = False
-
-    if phone_number:
-        logger.info(f"Sending SMS for task: {task_name}")
-        try:
-            send_sms_via_twilio(sms_body, phone_number)
-            notification_sent = True
-        except Exception as e:
-            logger.error(f"Failed to send SMS for task '{task_name}': {e}")
-
-    if email:
-        logger.info(f"Sending Email for task: {task_name}")
-        try:
-            send_email_via_gmail(email_subject, email_body, email)
-            notification_sent = True 
-        except Exception as e:
-            logger.error(f"Failed to send email for task '{task_name}': {e}")
-    if notification_sent:
-        logger.info(f"Updating last_notification_sent for task: {task_name}")
-        task.last_notification_sent = timezone.now()
-        try:
-            task.save()
-            logger.info(f"Successfully updated last_notification_sent for task: {task_name}")
-            
-        except Exception as e:
-            logger.error(f"Failed to update last_notification_sent for task '{task_name}': {e}")
 
 
 from django.db.models import Q

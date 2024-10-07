@@ -535,19 +535,23 @@ paypalrestsdk.configure({
     "client_secret": settings.PAYPAL_SECRET  # Replace with your actual client secret
 })
 class CreatePaymentView(APIView):
-    permission_classes = [AllowAny]  # Allow access without authentication
+    permission_classes = [IsAdminOrSelf]  # Allow access without authentication
 
     @swagger_auto_schema(responses={200: 'Payment Created!'})
     def get(self, request):
         amount_to_pay = "10.00"  # Example: Payment of $10.00
+        user = request.user  # Get the current logged-in user
 
+        return_url = request.build_absolute_uri(
+            reverse('payment_success')
+        ) + f"?user_id={user.id}"
         payment = paypalrestsdk.Payment({
             "intent": "sale",
             "payer": {
                 "payment_method": "paypal"
             },
             "redirect_urls": {
-                "return_url": request.build_absolute_uri(reverse('payment_success')),
+                "return_url": return_url,
                 "cancel_url": request.build_absolute_uri(reverse('payment_cancel'))
             },
             "transactions": [{
@@ -561,7 +565,7 @@ class CreatePaymentView(APIView):
                     }]
                 },
                 "amount": {
-                    "total": "10.00",  # Ensure this matches the item price and quantity
+                    "total": amount_to_pay,  # Ensure this matches the item price and quantity
                     "currency": "USD"
                 },
                 "description": "Payment for services"
@@ -571,28 +575,35 @@ class CreatePaymentView(APIView):
             for link in payment.links:
                 if link['rel'] == "approval_url":
                     print(link)
+                    # print(request.user)
                     return redirect(link.href)
         else:
             return JsonResponse({'error': payment.error}, status=500)
 
 
+
+
 class PaymentSuccessView(APIView):
-    permission_classes = [AllowAny]  # Allow access without authentication
+    permission_classes = [AllowAny] 
 
     @swagger_auto_schema(responses={200: 'Payment Success!'})
     def get(self, request):
         payment_id = request.GET.get('paymentId')
         payer_id = request.GET.get('PayerID')
-
+        user_id = request.GET.get('user_id')
         payment = paypalrestsdk.Payment.find(payment_id)
 
         if payment.execute({"payer_id": payer_id}):
+            user = User.objects.get(id = user_id)
+            print(user)
+            user.profile.user_type = 'premium'
+            user.profile.save()            
             return JsonResponse({'status': 'Payment completed successfully!'})
         else:
             return JsonResponse({'error': payment.error}, status=500)
 
 class PaymentCancelView(APIView):
-    permission_classes = [AllowAny]  # Allow access without authentication
+    permission_classes = [AllowAny]
 
     @swagger_auto_schema(responses={200: 'Payment Cancelled!'})
     def get(self, request):
