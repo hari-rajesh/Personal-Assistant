@@ -8,6 +8,10 @@ from .views import (
     UpdatePhoneNumberView, GoogleLoginCallback, GoogleCalendarEventView
 )
 
+from .views import(
+    CreatePaymentView, PaymentCancelView, PaymentSuccessView
+)
+
 urlpatterns = [
     path('register/', register_view, name="register"),
     path('update/<int:pk>/', update_view, name='update-user'),
@@ -29,6 +33,7 @@ urlpatterns = [
     # path('googlecalendar/', GoogleCalendarEventViewToken.as_view(), name='googlecalendar')
     path('tasks/query/', UserQueryView.as_view(), name='task_query'),
     path('tasks/recommendations/', TaskRecommendationView.as_view(), name='task_recommendations'),
-
-
+    path('create-payment/', CreatePaymentView.as_view(), name='create_payment'),
+    path('payment-success/', PaymentSuccessView.as_view(), name='payment_success'),
+    path('payment-cancel/', PaymentCancelView.as_view(), name='payment_cancel'),
 ]

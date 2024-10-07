@@ -9,6 +9,7 @@ nlp = spacy.load("en_core_web_sm")
 
 def identify_intent_and_entities(user_input):
     doc = nlp(user_input.lower())
+    print(doc)
     intent = None
     date = None
 

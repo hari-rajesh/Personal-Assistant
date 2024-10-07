@@ -24,6 +24,8 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from .spacy import handle_user_query, suggest_tasks
 from rest_framework.permissions import IsAuthenticated
+from django.http import JsonResponse, HttpResponseRedirect
+from django.shortcuts import redirect
 
 
 current_time = datetime.now().isoformat()
@@ -119,24 +121,24 @@ def login_view(request):
 
             message += '\nPlease take action to complete them.\n\nBest,\nTask Manager'
             recipient_list = user.email
-            if overdue_tasks:
-                # ##Send email via Gmail API using OAuth
-                if user.profile.enable_email:
-                    success = send_email_via_gmail(subject, message, recipient_list)
-                    if success:
-                        print('Email sent successfully')
-                    else:
-                        print('Failed to send email')
+            # if overdue_tasks:
+            #     # ##Send email via Gmail API using OAuth
+            #     if user.profile.enable_email:
+            #         success = send_email_via_gmail(subject, message, recipient_list)
+            #         if success:
+            #             print('Email sent successfully')
+            #         else:
+            #             print('Failed to send email')
 
-                ##Send SMS via Twillio 
-                recipient_phone = "+91"+user.mobile_number
-                if user.profile.enable_sms:
-                    sms_body = message
-                    sms_success = send_sms_via_twilio(sms_body, recipient_phone)
-                    if sms_success:
-                        print('SMS sent successfully')
-                    else:
-                        print('Failed to send SMS')
+            #     ##Send SMS via Twillio 
+            #     recipient_phone = "+91"+user.mobile_number
+            #     if user.profile.enable_sms:
+            #         sms_body = message
+            #         sms_success = send_sms_via_twilio(sms_body, recipient_phone)
+            #         if sms_success:
+            #             print('SMS sent successfully')
+            #         else:
+            #             print('Failed to send SMS')
 
         refresh = RefreshToken.for_user(user1)
         return Response({
@@ -522,3 +524,76 @@ class TaskRecommendationView(APIView):
         tasks = [{'title': task.title, 'deadline': task.deadline} for task in recommended_tasks]
         
         return Response({'recommended_tasks': tasks}, status=status.HTTP_200_OK)
+    
+
+import paypalrestsdk
+from django.urls import reverse
+
+paypalrestsdk.configure({
+    "mode": "sandbox",  # Use 'sandbox' for testing or 'live' for production
+    "client_id": settings.PAYPAL_CLIENT_ID,  # Replace with your actual client ID
+    "client_secret": settings.PAYPAL_SECRET  # Replace with your actual client secret
+})
+class CreatePaymentView(APIView):
+    permission_classes = [AllowAny]  # Allow access without authentication
+
+    @swagger_auto_schema(responses={200: 'Payment Created!'})
+    def get(self, request):
+        amount_to_pay = "10.00"  # Example: Payment of $10.00
+
+        payment = paypalrestsdk.Payment({
+            "intent": "sale",
+            "payer": {
+                "payment_method": "paypal"
+            },
+            "redirect_urls": {
+                "return_url": request.build_absolute_uri(reverse('payment_success')),
+                "cancel_url": request.build_absolute_uri(reverse('payment_cancel'))
+            },
+            "transactions": [{
+                "item_list": {
+                    "items": [{
+                        "name": "Item Name",
+                        "sku": "item",
+                        "price": amount_to_pay,  # Ensure correct format
+                        "currency": "USD",  # Ensure currency is correct
+                        "quantity": 1  # Ensure quantity is valid
+                    }]
+                },
+                "amount": {
+                    "total": "10.00",  # Ensure this matches the item price and quantity
+                    "currency": "USD"
+                },
+                "description": "Payment for services"
+            }]
+        })
+        if payment.create():
+            for link in payment.links:
+                if link['rel'] == "approval_url":
+                    print(link)
+                    return redirect(link.href)
+        else:
+            return JsonResponse({'error': payment.error}, status=500)
+
+
+class PaymentSuccessView(APIView):
+    permission_classes = [AllowAny]  # Allow access without authentication
+
+    @swagger_auto_schema(responses={200: 'Payment Success!'})
+    def get(self, request):
+        payment_id = request.GET.get('paymentId')
+        payer_id = request.GET.get('PayerID')
+
+        payment = paypalrestsdk.Payment.find(payment_id)
+
+        if payment.execute({"payer_id": payer_id}):
+            return JsonResponse({'status': 'Payment completed successfully!'})
+        else:
+            return JsonResponse({'error': payment.error}, status=500)
+
+class PaymentCancelView(APIView):
+    permission_classes = [AllowAny]  # Allow access without authentication
+
+    @swagger_auto_schema(responses={200: 'Payment Cancelled!'})
+    def get(self, request):
+        return JsonResponse({'status': 'Payment cancelled by the user.'})

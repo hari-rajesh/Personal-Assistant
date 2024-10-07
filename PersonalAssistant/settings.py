@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     # 'dj_rest_auth.registration',
     'social_django',
     'users.apps.UsersConfig',
+    'corsheaders',
 
 ]
 
@@ -113,6 +114,22 @@ CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 CELERY_TIMEZONE = 'UTC'
 
 
+import paypalrestsdk
+
+PAYPAL_CLIENT_ID = "ATC9ruN6-G3tUdcPaZqAxrgM3VS_jlHoEyey8htHe2-f3jFGCHS1pffTNBRVin2TFbRlHsRC4AvY4MeH"
+PAYPAL_SECRET = "ECo1HPg71QsWuinYZBpYfnHH--TMAEUGR8thE1BzALoCYdzb-puLPM9uX5QGR37mpVjKFoGnATKrNj3E"
+
+
+
+CORS_ORIGIN_ALLOW_ALL = True  # Allow all domains (for testing purposes)
+
+# Or specify allowed origins:
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:8000',  # Example: Your Django backend
+    'http://127.0.0.1:8000',  # Example: Swagger UI running locally
+]
+
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -121,7 +138,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-
+    'corsheaders.middleware.CorsMiddleware',
     'allauth.account.middleware.AccountMiddleware',
 ]
 
