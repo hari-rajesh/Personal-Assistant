@@ -6,7 +6,6 @@ class TaskSerializer(serializers.ModelSerializer):
         model = Task
         fields = (
             'id',
-            'user',
             'title',
             'description',
             'priority',
@@ -145,3 +144,30 @@ class UserQuerySerializer(serializers.Serializer):
 
     class Meta:
         fields = ['text']
+
+from rest_framework import serializers
+
+class PaymentSerializer(serializers.Serializer):
+    # Defining payment plan choices
+    PAYMENT_PLAN_CHOICES = [
+        ('weekly', 'Weekly ($5)'),
+        ('monthly', 'Monthly ($20)'),
+    ]
+
+    payment_plan = serializers.ChoiceField(choices=PAYMENT_PLAN_CHOICES, required=True)
+    amount = serializers.CharField(read_only=True)
+
+    class Meta:
+        fields = ['payment_plan']
+
+    def validate(self, data):
+        payment_plan = data.get('payment_plan')
+
+        if payment_plan == 'weekly':
+            data['amount'] = '5'  # $5 for weekly
+        elif payment_plan == 'monthly':
+            data['amount'] = '20'  # $20 for monthly
+        else:
+            raise serializers.ValidationError("Invalid payment plan selected.")
+
+        return data

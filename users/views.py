@@ -1,7 +1,7 @@
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from .models import  Task, Profile
-from .serializers import TaskSerializer, ProfileSerializer, UserSerializer, LoginSerializers, UpdateSerializer, PhoneNumberSerializer, UserQuerySerializer
+from .serializers import TaskSerializer, ProfileSerializer, UserSerializer, LoginSerializers, UpdateSerializer, PhoneNumberSerializer, UserQuerySerializer, PaymentSerializer
 from django.conf import settings
 from .oauth import send_email_via_gmail
 from .utils import send_sms_via_twilio
@@ -26,10 +26,21 @@ from .spacy import handle_user_query, suggest_tasks
 from rest_framework.permissions import IsAuthenticated
 from django.http import JsonResponse, HttpResponseRedirect
 from django.shortcuts import redirect
+from django.urls import reverse
+import pytz
 
 
-current_time = datetime.now().isoformat()
+def convert_to_ist(utc_time):
+    ist_timezone = pytz.timezone('Asia/Kolkata')
+    
+    ist_time = utc_time.astimezone(ist_timezone)
+    
+    return ist_time
 
+
+current_time = convert_to_ist(datetime.now()).isoformat()
+
+print("Current time: %s" % current_time)
 class IsAdminOrSelf(BasePermission):
     def has_permission(self, request, view):
         return request.user and request.user.is_authenticated
@@ -110,7 +121,7 @@ def login_view(request):
         if not user:
             return Response({'error': 'Invalid credentials.'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        overdue_tasks = Task.objects.filter(user=user, deadline__lt=timezone.now(), status='Pending')
+        overdue_tasks = Task.objects.filter(user=user, deadline__lt=convert_to_ist(timezone.now()), status='Pending')
 
         if overdue_tasks.exists():
             subject = 'Overdue Tasks Notification'
@@ -313,7 +324,7 @@ class GoogleLoginCallback(APIView):
                 access_token = token_info['access_token']
                 refresh_token = token_info.get('refresh_token')
                 expires_in = token_info['expires_in']
-                expiration_time = timezone.now() + timedelta(seconds=expires_in)
+                expiration_time = convert_to_ist(timezone.now()) + timedelta(seconds=expires_in)
 
                 # Fetch user info
                 user_info_url = f"https://www.googleapis.com/oauth2/v1/userinfo?access_token={access_token}"
@@ -396,7 +407,6 @@ def refresh_google_access_token(refresh_token):
         return tokens['access_token'], tokens.get('expires_in', 3600)
     return None, None  # Return None for both if refresh fails
 
-import pytz
 
 def format_datetime(dt_string):
     original_dt = datetime.strptime(dt_string, "%Y-%m-%d %H:%M:%S.%f")
@@ -408,13 +418,14 @@ def format_datetime(dt_string):
     return formatted_dt
 
 
+
 def create_google_calendar_event(user1, task):
     token_expiry_time = user1.profile.google_token_expires_at
     refresh_token = user1.profile.google_refresh_token
     access_token = user1.profile.google_access_token
     expires_in = None  # Initialize expires_in at the start of the function     
     # Check if the access token is expired
-    if timezone.now() >= token_expiry_time:
+    if convert_to_ist(timezone.now()) >= token_expiry_time:
         print("Access token has expired. Refreshing the token...")
         # Refresh the access token using the refresh token
         access_token, expires_in = refresh_google_access_token(refresh_token)
@@ -425,8 +436,8 @@ def create_google_calendar_event(user1, task):
 
     service = build('calendar', 'v3', credentials=creds)
 
-    current_time = format_datetime(timezone.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
-    task_deadline = format_datetime(task.deadline.strftime("%Y-%m-%d %H:%M:%S.%f"))
+    current_time = format_datetime(convert_to_ist(timezone.now()).strftime("%Y-%m-%d %H:%M:%S.%f"))
+    task_deadline = format_datetime(convert_to_ist(task.deadline.strftime("%Y-%m-%d %H:%M:%S.%f")))
 
     event = {
         'summary': task.title,
@@ -527,7 +538,6 @@ class TaskRecommendationView(APIView):
     
 
 import paypalrestsdk
-from django.urls import reverse
 
 paypalrestsdk.configure({
     "mode": "sandbox",  # Use 'sandbox' for testing or 'live' for production
@@ -537,14 +547,21 @@ paypalrestsdk.configure({
 class CreatePaymentView(APIView):
     permission_classes = [IsAdminOrSelf]  # Allow access without authentication
 
-    @swagger_auto_schema(responses={200: 'Payment Created!'})
-    def get(self, request):
-        amount_to_pay = "10.00"  # Example: Payment of $10.00
-        user = request.user  # Get the current logged-in user
+    @swagger_auto_schema(
+        request_body=PaymentSerializer,
+        responses={200: 'Payment URL Successfully Created!', 400: 'Bad Request'}
+    )
+    def post(self, request):
+        serializer = PaymentSerializer(data=request.data)
+        amount_to_pay = "10.00"
+        if serializer.is_valid():
+            amount_to_pay = serializer.validated_data['amount']
+            
+        user = request.user 
 
         return_url = request.build_absolute_uri(
             reverse('payment_success')
-        ) + f"?user_id={user.id}"
+        ) + f"?user_id={user.id}&amount_to_pay={amount_to_pay}"
         payment = paypalrestsdk.Payment({
             "intent": "sale",
             "payer": {
@@ -576,7 +593,7 @@ class CreatePaymentView(APIView):
                 if link['rel'] == "approval_url":
                     print(link)
                     # print(request.user)
-                    return redirect(link.href)
+                    return JsonResponse({'Redirect_URL':link.href})
         else:
             return JsonResponse({'error': payment.error}, status=500)
 
@@ -591,13 +608,18 @@ class PaymentSuccessView(APIView):
         payment_id = request.GET.get('paymentId')
         payer_id = request.GET.get('PayerID')
         user_id = request.GET.get('user_id')
+        amount_to_pay = request.GET.get('amount_to_pay')
         payment = paypalrestsdk.Payment.find(payment_id)
+        print(amount_to_pay)
 
         if payment.execute({"payer_id": payer_id}):
             user = User.objects.get(id = user_id)
             print(user)
             user.profile.user_type = 'premium'
-            user.profile.save()            
+            user.profile.save()
+            user.payments.payment_id = payment_id
+            user.payments.last_payment = convert_to_ist(timezone.now())
+            user.payments.premium_validity = convert_to_ist(timezone.now())
             return JsonResponse({'status': 'Payment completed successfully!'})
         else:
             return JsonResponse({'error': payment.error}, status=500)
@@ -608,3 +630,4 @@ class PaymentCancelView(APIView):
     @swagger_auto_schema(responses={200: 'Payment Cancelled!'})
     def get(self, request):
         return JsonResponse({'status': 'Payment cancelled by the user.'})
+    
