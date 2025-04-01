@@ -77,6 +77,3 @@ Personal Assistant is a **task management API** built using **Django and REST AP
 - Notifications are **automatically scheduled and sent** without delaying the API response.  
 - **Redis** is used as a message broker to manage task execution.  
 
----
-
-Let me know if you need any changes! 🚀😊
